@@ -1,0 +1,21 @@
+{
+  "name": "jsonl-insight-pwa",
+  "version": "1.0.0",
+  "description": "Offline zero-build PWA for inspecting JSONL and NDJSON logs locally in the browser.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "serve": "node scripts/serve.mjs",
+    "check:no-placeholders": "node scripts/check-placeholders.mjs"
+  },
+  "keywords": [
+    "jsonl",
+    "ndjson",
+    "pwa",
+    "offline",
+    "logs",
+    "evals"
+  ],
+  "license": "MIT",
+  "devDependencies": {}
+}

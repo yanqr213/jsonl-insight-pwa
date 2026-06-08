@@ -1,0 +1,18 @@
+{
+  "name": "JSONL Insight PWA",
+  "short_name": "JSONL Insight",
+  "description": "Offline local JSONL and NDJSON log analysis for developers and data analysts.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7f6",
+  "theme_color": "#263238",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

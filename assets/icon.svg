@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="JSONL Insight icon">
+  <rect width="192" height="192" rx="36" fill="#263238"/>
+  <path d="M42 58c0-9 7-16 16-16h76c9 0 16 7 16 16v76c0 9-7 16-16 16H58c-9 0-16-7-16-16V58z" fill="#f5f7f6"/>
+  <path d="M64 74h64M64 96h44M64 118h64" fill="none" stroke="#176b5f" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="132" cy="96" r="12" fill="#d98941"/>
+  <path d="M118 122l14-26 18 36" fill="none" stroke="#d98941" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

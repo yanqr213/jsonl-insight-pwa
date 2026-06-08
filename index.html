@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#263238">
+    <meta name="description" content="离线查看 JSONL/NDJSON 日志、eval 结果与结构化事件的本地 PWA 工具。">
+    <title>JSONL Insight PWA</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar" aria-label="应用标题和文件操作">
+        <div class="brand">
+          <img src="assets/icon.svg" alt="" class="brand-mark" width="34" height="34">
+          <div>
+            <h1>JSONL Insight</h1>
+            <p>本地离线分析 JSONL / NDJSON 日志</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button id="loadExampleButton" type="button" class="secondary-button">加载示例</button>
+          <label class="primary-button file-button">
+            选择文件
+            <input id="fileInput" type="file" accept=".jsonl,.ndjson,.log,.txt,application/json,text/plain">
+          </label>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="control-pane" aria-label="导入和过滤">
+          <div id="dropZone" class="drop-zone" tabindex="0">
+            <strong>拖拽 JSONL 文件到这里</strong>
+            <span>或选择文件。所有数据仅在浏览器本地处理。</span>
+          </div>
+
+          <div class="privacy-note">
+            <strong>隐私提示</strong>
+            <span>文件不会上传；导出、过滤和缓存都在当前浏览器内完成。关闭共享电脑前请清除会话。</span>
+          </div>
+
+          <div class="field-stack">
+            <label for="searchInput">搜索与过滤</label>
+            <input id="searchInput" type="search" placeholder="plain text, level:error, duration>500">
+          </div>
+
+          <div class="filter-row">
+            <label class="checkbox-line">
+              <input id="errorsOnlyToggle" type="checkbox">
+              <span>仅显示错误行</span>
+            </label>
+            <label class="checkbox-line">
+              <input id="validOnlyToggle" type="checkbox">
+              <span>隐藏解析失败</span>
+            </label>
+          </div>
+
+          <div class="field-stack">
+            <label for="sampleSizeInput">抽样行数</label>
+            <input id="sampleSizeInput" type="number" min="5" max="500" step="5" value="50">
+          </div>
+
+          <div class="button-grid">
+            <button id="exportCsvButton" type="button">导出 CSV</button>
+            <button id="exportMarkdownButton" type="button">导出 Markdown</button>
+            <button id="clearSessionButton" type="button" class="danger-button">清除会话</button>
+          </div>
+
+          <div class="status-box" aria-live="polite">
+            <span id="statusText">等待加载文件</span>
+          </div>
+        </section>
+
+        <section class="result-pane" aria-label="数据洞察">
+          <div class="metric-strip" id="metricStrip">
+            <article>
+              <span>总行数</span>
+              <strong id="totalRowsMetric">0</strong>
+            </article>
+            <article>
+              <span>有效 JSON</span>
+              <strong id="validRowsMetric">0</strong>
+            </article>
+            <article>
+              <span>解析错误</span>
+              <strong id="errorRowsMetric">0</strong>
+            </article>
+            <article>
+              <span>字段数</span>
+              <strong id="fieldCountMetric">0</strong>
+            </article>
+          </div>
+
+          <nav class="tabs" aria-label="结果视图">
+            <button type="button" class="tab active" data-tab="overview">概览</button>
+            <button type="button" class="tab" data-tab="fields">字段</button>
+            <button type="button" class="tab" data-tab="numbers">数值</button>
+            <button type="button" class="tab" data-tab="categories">分类</button>
+            <button type="button" class="tab" data-tab="time">时间</button>
+            <button type="button" class="tab" data-tab="errors">错误</button>
+            <button type="button" class="tab" data-tab="sample">抽样</button>
+          </nav>
+
+          <section class="tab-panel active" id="tab-overview">
+            <div class="summary-grid">
+              <div>
+                <h2>文件概览</h2>
+                <dl id="overviewList" class="definition-list"></dl>
+              </div>
+              <div>
+                <h2>异常提示</h2>
+                <div id="outlierHints" class="hint-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" id="tab-fields">
+            <h2>字段推断</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>字段</th>
+                    <th>类型</th>
+                    <th>覆盖率</th>
+                    <th>非空</th>
+                    <th>示例</th>
+                  </tr>
+                </thead>
+                <tbody id="fieldsTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="tab-panel" id="tab-numbers">
+            <h2>数值字段统计</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>字段</th>
+                    <th>count</th>
+                    <th>min</th>
+                    <th>p50</th>
+                    <th>p95</th>
+                    <th>max</th>
+                    <th>mean</th>
+                    <th>异常</th>
+                  </tr>
+                </thead>
+                <tbody id="numericTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="tab-panel" id="tab-categories">
+            <h2>分类字段 Top Values</h2>
+            <div id="categoryCards" class="cards-grid"></div>
+          </section>
+
+          <section class="tab-panel" id="tab-time">
+            <h2>时间字段范围</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>字段</th>
+                    <th>count</th>
+                    <th>最早</th>
+                    <th>最晚</th>
+                    <th>跨度</th>
+                  </tr>
+                </thead>
+                <tbody id="timeTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="tab-panel" id="tab-errors">
+            <h2>错误行隔离</h2>
+            <div class="table-wrap compact">
+              <table>
+                <thead>
+                  <tr>
+                    <th>行号</th>
+                    <th>错误</th>
+                    <th>原始内容</th>
+                  </tr>
+                </thead>
+                <tbody id="errorsTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="tab-panel" id="tab-sample">
+            <h2>抽样表</h2>
+            <div class="table-wrap sample-table-wrap">
+              <table id="sampleTable"></table>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
