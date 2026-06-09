@@ -1,6 +1,6 @@
 {
   "name": "jsonl-insight-pwa",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Offline zero-build PWA for inspecting JSONL and NDJSON logs locally in the browser.",
   "type": "module",
   "scripts": {

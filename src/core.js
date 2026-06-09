@@ -1,4 +1,14 @@
 const DATE_LIKE_KEY = /(time|date|timestamp|created|updated|ts|at)$/i;
+const FAILURE_STATUS_VALUES = new Set(["fail", "failed", "failure", "error", "errored", "timeout", "timed-out", "invalid", "rejected"]);
+const STATUS_FIELDS = ["status", "result", "outcome", "state", "verdict"];
+const SUCCESS_FIELDS = ["success", "ok", "passed"];
+const ERROR_FIELDS = ["error", "errors", "exception", "failure", "failure_reason", "failure.reason", "error.message", "message.error"];
+const FAILURE_DETAIL_FIELDS = [...ERROR_FIELDS, "message", "reason", "failure_message"];
+const CATEGORY_FIELDS = ["category", "suite", "task.category", "case.category", "case.difficulty", "difficulty", "judge"];
+const MODEL_FIELDS = ["model", "model_name", "model.id", "provider.model", "run.model", "agent", "agentName"];
+const ID_FIELDS = ["id", "case.id", "case.name", "name", "trace_id", "request_id"];
+const SCORE_FIELDS = ["score", "metrics.score", "judge.score"];
+const LATENCY_FIELDS = ["latency_ms", "duration_ms", "elapsed_ms", "time_ms", "latency"];
 
 export function parseJsonl(text) {
   const lines = String(text ?? "").replace(/^\uFEFF/, "").split(/\r?\n/);
@@ -282,6 +292,96 @@ export function makeSummary(parsed, rows, fields, numericStats, categoryStats, d
   };
 }
 
+export function analyzeFailures(rows, options = {}) {
+  const statusFields = options.statusFields || STATUS_FIELDS;
+  const successFields = options.successFields || SUCCESS_FIELDS;
+  const errorFields = options.errorFields || ERROR_FIELDS;
+  const categoryFields = options.categoryFields || CATEGORY_FIELDS;
+  const modelFields = options.modelFields || MODEL_FIELDS;
+  const idFields = options.idFields || ID_FIELDS;
+  const scoreFields = options.scoreFields || SCORE_FIELDS;
+  const latencyFields = options.latencyFields || LATENCY_FIELDS;
+  const examplesLimit = clampInteger(options.examplesLimit ?? 20, 1, 100);
+  const failures = [];
+
+  for (const row of rows) {
+    const flattened = flattenObject(row.data);
+    const status = firstPresent(flattened, statusFields);
+    const success = firstPresent(flattened, successFields);
+    const errorSignal = firstPresent(flattened, errorFields);
+    const failureKind = getFailureKind(status, success, errorSignal);
+    if (!failureKind) continue;
+
+    const error = firstPresent(flattened, options.failureDetailFields || FAILURE_DETAIL_FIELDS);
+    const score = normalizeNumber(firstPresent(flattened, scoreFields));
+    const latencyMs = normalizeNumber(firstPresent(flattened, latencyFields));
+    failures.push({
+      lineNumber: row.lineNumber,
+      id: formatPrimitive(firstPresent(flattened, idFields) || `line-${row.lineNumber}`, 120),
+      status: formatPrimitive(status || failureKind, 80),
+      error: summarizeFailureError(error),
+      category: formatPrimitive(firstPresent(flattened, categoryFields) || "uncategorized", 120),
+      model: formatPrimitive(firstPresent(flattened, modelFields) || "unknown", 120),
+      score: Number.isFinite(score) ? score : null,
+      latencyMs: Number.isFinite(latencyMs) ? latencyMs : null
+    });
+  }
+
+  return {
+    totalRows: rows.length,
+    failedRows: failures.length,
+    failureRate: rows.length ? failures.length / rows.length : 0,
+    statusBreakdown: countBreakdown(failures.map((item) => item.status || "failure"), failures.length),
+    errorBreakdown: countBreakdown(failures.map((item) => item.error || "unknown"), failures.length),
+    categoryBreakdown: countBreakdown(failures.map((item) => item.category || "uncategorized"), failures.length),
+    modelBreakdown: countBreakdown(failures.map((item) => item.model || "unknown"), failures.length),
+    examples: failures.slice(0, examplesLimit)
+  };
+}
+
+export function exportFailureMarkdown(analysis) {
+  const lines = [
+    "# JSONL Failure Drilldown",
+    "",
+    "| Metric | Value |",
+    "| --- | ---: |",
+    `| Valid rows inspected | ${analysis.totalRows} |`,
+    `| Failure rows | ${analysis.failedRows} |`,
+    `| Failure rate | ${formatPercent(analysis.failureRate)} |`,
+    "",
+    "## By Status",
+    "",
+    breakdownTable(analysis.statusBreakdown),
+    "",
+    "## By Error",
+    "",
+    breakdownTable(analysis.errorBreakdown),
+    "",
+    "## By Category",
+    "",
+    breakdownTable(analysis.categoryBreakdown),
+    "",
+    "## By Model",
+    "",
+    breakdownTable(analysis.modelBreakdown),
+    "",
+    "## Failure Examples",
+    "",
+    "| Line | ID | Status | Error | Category | Model | Score | Latency ms |",
+    "| ---: | --- | --- | --- | --- | --- | ---: | ---: |"
+  ];
+
+  if (analysis.examples.length) {
+    for (const item of analysis.examples) {
+      lines.push(`| ${item.lineNumber} | ${escapeMarkdownCell(item.id)} | ${escapeMarkdownCell(item.status)} | ${escapeMarkdownCell(item.error)} | ${escapeMarkdownCell(item.category)} | ${escapeMarkdownCell(item.model)} | ${formatNumber(item.score)} | ${formatNumber(item.latencyMs)} |`);
+    }
+  } else {
+    lines.push("|  | No failure rows detected |  |  |  |  |  |  |");
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
 export function exportCsv(rows, fields) {
   const fieldNames = fields.map((field) => (typeof field === "string" ? field : field.name));
   const header = ["lineNumber", ...fieldNames];
@@ -478,6 +578,69 @@ function compareFilterValue(actual, operator, expected) {
   if (operator === "!=") return actualText !== expectedText;
   if (operator === "=") return actualText === expectedText;
   return actualText.includes(expectedText);
+}
+
+function firstPresent(source, fields) {
+  for (const field of fields) {
+    let value;
+    if (Object.hasOwn(source, field)) {
+      value = source[field];
+    } else {
+      const prefix = `${field}.`;
+      const nestedKey = Object.keys(source).find((key) => key.startsWith(prefix));
+      value = nestedKey ? source[nestedKey] : undefined;
+    }
+    if (value === null || value === undefined) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    return value;
+  }
+  return undefined;
+}
+
+function getFailureKind(status, success, error) {
+  const statusText = normalizeFailureToken(status);
+  if (statusText && FAILURE_STATUS_VALUES.has(statusText)) return statusText;
+  if (success === false || normalizeFailureToken(success) === "false") return "success=false";
+  if (hasErrorSignal(error)) return "error";
+  return "";
+}
+
+function normalizeFailureToken(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim().toLowerCase().replace(/_/g, "-");
+}
+
+function hasErrorSignal(value) {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return String(value).trim().length > 0;
+}
+
+function summarizeFailureError(value) {
+  if (!hasErrorSignal(value)) return "unknown";
+  return formatPrimitive(value, 140);
+}
+
+function countBreakdown(values, denominator) {
+  const counts = new Map();
+  for (const value of values) {
+    const key = value || "unknown";
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([value, count]) => ({ value, count, ratio: denominator ? count / denominator : 0 }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+    .slice(0, 12);
+}
+
+function breakdownTable(items) {
+  if (!items.length) return "| Value | Count | Ratio |\n| --- | ---: | ---: |\n| No failures | 0 | 0% |";
+  return [
+    "| Value | Count | Ratio |",
+    "| --- | ---: | ---: |",
+    ...items.map((item) => `| ${escapeMarkdownCell(item.value)} | ${item.count} | ${formatPercent(item.ratio)} |`)
+  ].join("\n");
 }
 
 function chooseFieldKind(types) {

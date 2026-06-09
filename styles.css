@@ -237,7 +237,7 @@ button:hover,
 
 .metric-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
 }
 
@@ -388,6 +388,34 @@ tbody tr:last-child td {
   gap: 12px;
 }
 
+.failure-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.failure-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfc;
+}
+
+.failure-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.failure-card strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+}
+
 .value-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -467,6 +495,7 @@ tbody tr:last-child td {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+    position: static;
   }
 
   .top-actions,

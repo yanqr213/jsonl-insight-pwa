@@ -65,6 +65,7 @@
           <div class="button-grid">
             <button id="exportCsvButton" type="button">导出 CSV</button>
             <button id="exportMarkdownButton" type="button">导出 Markdown</button>
+            <button id="exportFailureButton" type="button">导出失败报告</button>
             <button id="clearSessionButton" type="button" class="danger-button">清除会话</button>
           </div>
 
@@ -91,6 +92,10 @@
               <span>字段数</span>
               <strong id="fieldCountMetric">0</strong>
             </article>
+            <article>
+              <span>失败样本</span>
+              <strong id="failureRowsMetric">0</strong>
+            </article>
           </div>
 
           <nav class="tabs" aria-label="结果视图">
@@ -98,6 +103,7 @@
             <button type="button" class="tab" data-tab="fields">字段</button>
             <button type="button" class="tab" data-tab="numbers">数值</button>
             <button type="button" class="tab" data-tab="categories">分类</button>
+            <button type="button" class="tab" data-tab="failures">失败分析</button>
             <button type="button" class="tab" data-tab="time">时间</button>
             <button type="button" class="tab" data-tab="errors">错误</button>
             <button type="button" class="tab" data-tab="sample">抽样</button>
@@ -158,6 +164,28 @@
           <section class="tab-panel" id="tab-categories">
             <h2>分类字段 Top Values</h2>
             <div id="categoryCards" class="cards-grid"></div>
+          </section>
+
+          <section class="tab-panel" id="tab-failures">
+            <h2>AI Eval 失败分析</h2>
+            <div id="failureOverview" class="failure-grid"></div>
+            <div class="table-wrap compact">
+              <table>
+                <thead>
+                  <tr>
+                    <th>行号</th>
+                    <th>ID</th>
+                    <th>状态</th>
+                    <th>错误</th>
+                    <th>类别</th>
+                    <th>模型</th>
+                    <th>分数</th>
+                    <th>延迟 ms</th>
+                  </tr>
+                </thead>
+                <tbody id="failureExamplesBody"></tbody>
+              </table>
+            </div>
           </section>
 
           <section class="tab-panel" id="tab-time">

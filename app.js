@@ -1,10 +1,12 @@
 import {
   applyFilters,
+  analyzeFailures,
   clearSession,
   computeCategoricalTopValues,
   computeDateRanges,
   computeNumericStats,
   exportCsv,
+  exportFailureMarkdown,
   exportMarkdown,
   formatDuration,
   formatNumber,
@@ -29,6 +31,7 @@ const state = {
   numericStats: [],
   categoryStats: [],
   dateRanges: [],
+  failureAnalysis: analyzeFailures([]),
   activeTab: "overview"
 };
 
@@ -42,14 +45,18 @@ const elements = {
   sampleSizeInput: document.querySelector("#sampleSizeInput"),
   exportCsvButton: document.querySelector("#exportCsvButton"),
   exportMarkdownButton: document.querySelector("#exportMarkdownButton"),
+  exportFailureButton: document.querySelector("#exportFailureButton"),
   clearSessionButton: document.querySelector("#clearSessionButton"),
   statusText: document.querySelector("#statusText"),
   totalRowsMetric: document.querySelector("#totalRowsMetric"),
   validRowsMetric: document.querySelector("#validRowsMetric"),
   errorRowsMetric: document.querySelector("#errorRowsMetric"),
   fieldCountMetric: document.querySelector("#fieldCountMetric"),
+  failureRowsMetric: document.querySelector("#failureRowsMetric"),
   overviewList: document.querySelector("#overviewList"),
   outlierHints: document.querySelector("#outlierHints"),
+  failureOverview: document.querySelector("#failureOverview"),
+  failureExamplesBody: document.querySelector("#failureExamplesBody"),
   fieldsTableBody: document.querySelector("#fieldsTableBody"),
   numericTableBody: document.querySelector("#numericTableBody"),
   categoryCards: document.querySelector("#categoryCards"),
@@ -119,6 +126,11 @@ function bindEvents() {
     downloadText(`${baseName(state.fileName || "jsonl-insight")}-summary.md`, markdown, "text/markdown");
   });
 
+  elements.exportFailureButton.addEventListener("click", () => {
+    const markdown = exportFailureMarkdown(state.failureAnalysis);
+    downloadText(`${baseName(state.fileName || "jsonl-insight")}-failures.md`, markdown, "text/markdown");
+  });
+
   elements.clearSessionButton.addEventListener("click", () => {
     clearSession(localStorage, SESSION_KEY);
     setDataset("", "");
@@ -173,6 +185,7 @@ function recompute() {
   state.numericStats = computeNumericStats(rows, state.fields);
   state.categoryStats = computeCategoricalTopValues(rows, state.fields);
   state.dateRanges = computeDateRanges(rows, state.fields);
+  state.failureAnalysis = analyzeFailures(rows);
 
   if (state.text) {
     saveSession(localStorage, SESSION_KEY, { fileName: state.fileName, text: state.text }, MAX_STORAGE_CHARS);
@@ -187,8 +200,10 @@ function render() {
   elements.validRowsMetric.textContent = formatInteger(summary.validRows);
   elements.errorRowsMetric.textContent = formatInteger(summary.parseErrors);
   elements.fieldCountMetric.textContent = formatInteger(summary.fieldCount);
+  elements.failureRowsMetric.textContent = formatInteger(state.failureAnalysis.failedRows);
 
   renderOverview(summary);
+  renderFailures();
   renderFields();
   renderNumericStats();
   renderCategories();
@@ -201,6 +216,51 @@ function render() {
     setStatus(`${state.fileName || "未命名数据"}：${formatInteger(summary.visibleRows)} 行匹配，${formatInteger(summary.parseErrors)} 行解析失败`);
   } else {
     setStatus("等待加载文件");
+  }
+}
+
+function renderFailures() {
+  elements.failureOverview.innerHTML = "";
+  const analysis = state.failureAnalysis;
+  const cards = [
+    ["失败行", formatInteger(analysis.failedRows)],
+    ["失败率", formatPercent(analysis.failureRate)],
+    ["按状态", summarizeBreakdown(analysis.statusBreakdown)],
+    ["按错误", summarizeBreakdown(analysis.errorBreakdown)],
+    ["按类别", summarizeBreakdown(analysis.categoryBreakdown)],
+    ["按模型", summarizeBreakdown(analysis.modelBreakdown)]
+  ];
+
+  for (const [label, value] of cards) {
+    const item = document.createElement("article");
+    item.className = "failure-card";
+    const title = document.createElement("span");
+    title.textContent = label;
+    const body = document.createElement("strong");
+    body.textContent = value;
+    item.append(title, body);
+    elements.failureOverview.append(item);
+  }
+
+  elements.failureExamplesBody.innerHTML = "";
+  if (!analysis.examples.length) {
+    elements.failureExamplesBody.append(tableEmptyRow(8, "当前过滤结果没有识别到失败样本。"));
+    return;
+  }
+
+  for (const item of analysis.examples) {
+    const row = document.createElement("tr");
+    row.append(
+      cell(item.lineNumber),
+      cell(item.id),
+      cell(item.status),
+      cell(item.error),
+      cell(item.category),
+      cell(item.model),
+      cell(formatNumber(item.score)),
+      cell(formatNumber(item.latencyMs))
+    );
+    elements.failureExamplesBody.append(row);
   }
 }
 
@@ -441,6 +501,11 @@ function readPath(source, path) {
 
 function formatInteger(value) {
   return Number(value || 0).toLocaleString("en-US");
+}
+
+function summarizeBreakdown(items) {
+  if (!items.length) return "无";
+  return items.slice(0, 3).map((item) => `${item.value} ${formatInteger(item.count)}`).join(" / ");
 }
 
 function baseName(fileName) {

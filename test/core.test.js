@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyFilters,
+  analyzeFailures,
   clearSession,
   computeCategoricalTopValues,
   computeDateRanges,
   computeNumericStats,
   createMemoryStorage,
   exportCsv,
+  exportFailureMarkdown,
   exportMarkdown,
   flattenObject,
   inferFields,
@@ -150,6 +152,49 @@ test("exportMarkdown includes metric and numeric sections", () => {
   assert.match(markdown, /# JSONL Insight Summary/);
   assert.match(markdown, /duration_ms/);
   assert.match(markdown, /Time Ranges/);
+});
+
+test("analyzeFailures detects eval failures and groups likely causes", () => {
+  const parsed = parseJsonl(fixture);
+  const analysis = analyzeFailures(parsed.rows);
+
+  assert.equal(analysis.failedRows, 2);
+  assert.equal(analysis.failureRate, 2 / 11);
+  assert.equal(analysis.statusBreakdown[0].value, "fail");
+  assert.equal(analysis.errorBreakdown.some((item) => item.value === "bad output"), true);
+  assert.equal(analysis.examples[0].lineNumber, 2);
+});
+
+test("analyzeFailures supports success false and error-only rows", () => {
+  const parsed = parseJsonl([
+    '{"id":"a","success":false,"model":"m1","category":"tool"}',
+    '{"id":"b","error":{"type":"timeout"},"model":"m2","category":"agent"}',
+    '{"id":"c","success":true,"model":"m1"}'
+  ].join("\n"));
+  const analysis = analyzeFailures(parsed.rows);
+
+  assert.equal(analysis.failedRows, 2);
+  assert.deepEqual(analysis.modelBreakdown.map((item) => item.value), ["m1", "m2"]);
+});
+
+test("analyzeFailures does not treat plain log messages as failures", () => {
+  const parsed = parseJsonl([
+    '{"level":"info","message":"request completed","service":"api"}',
+    '{"level":"warn","message":"slow query","duration_ms":1200}'
+  ].join("\n"));
+  const analysis = analyzeFailures(parsed.rows);
+
+  assert.equal(analysis.failedRows, 0);
+});
+
+test("exportFailureMarkdown includes breakdowns and examples", () => {
+  const parsed = parseJsonl(fixture);
+  const markdown = exportFailureMarkdown(analyzeFailures(parsed.rows));
+
+  assert.match(markdown, /# JSONL Failure Drilldown/);
+  assert.match(markdown, /Failure rate/);
+  assert.match(markdown, /By Model/);
+  assert.match(markdown, /bad output/);
 });
 
 test("saveSession and loadSession round trip", () => {
